@@ -1,0 +1,8 @@
+# Archivo de requerimientos del proyecto
+
+# Para la generación de llaves
+cryptography
+pynacl
+
+# Para correr las pruebas
+pytest
