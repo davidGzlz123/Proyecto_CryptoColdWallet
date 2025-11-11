@@ -18,8 +18,8 @@ def test_keypair_generation_and_lengths():
     """
     Test 1: Verificación de que las llaves se generen y tengan el tamaño correcto.
     Ed25519 debe tener:
-    ♦ 32 bytes de llave privada (seed)
-    ♦ 32 bytes de llave pública
+        - 32 bytes de llave privada (seed)
+        - 32 bytes de llave pública
     """
     private_bytes, public_bytes = keygen.generate_keypair()
     
