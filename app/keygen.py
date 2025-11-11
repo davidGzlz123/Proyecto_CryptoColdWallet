@@ -26,32 +26,32 @@ if not (CRYPTOGRAPHY_OK or PYNACL_OK):
 def generate_keypair():
     """
     Genera una llave privada y pública Ed25519
-    Regresa una tupla (priv_bytes, pub_bytes)
+    Regresa una tupla (private_bytes, public_bytes)
     """
     if CRYPTOGRAPHY_OK:
-        priv = ed25519.Ed25519PrivateKey.generate()
-        pub = priv.public_key()
-        priv_bytes = priv.private_bytes(
+        private_key = ed25519.Ed25519PrivateKey.generate()
+        public_key = private_key.public_key()
+        private_bytes = private_key.private_bytes(
             encoding=serialization.Encoding.Raw,
             format=serialization.PrivateFormat.Raw,
             encryption_algorithm=serialization.NoEncryption()
         )
-        pub_bytes = pub.public_bytes(
+        public_bytes = public_key.public_bytes(
             encoding=serialization.Encoding.Raw,
             format=serialization.PublicFormat.Raw
         )
-        return priv_bytes, pub_bytes
+        return private_bytes, public_bytes
     else:
-        sk = SigningKey.generate()
-        vk = sk.verify_key
-        return sk.encode(), vk.encode()
+        signing_key = SigningKey.generate()
+        verify_key = signing_key.verify_key
+        return signing_key.encode(), verify_key.encode()
 
 
-def export_pubkey_hex(pub_bytes):
+def export_pubkey_hex(public_bytes):
     """Convierte la llave pública a texto en formato hex."""
-    return binascii.hexlify(pub_bytes).decode('ascii')
+    return binascii.hexlify(public_bytes).decode('ascii')
 
 
-def export_pubkey_base64(pub_bytes):
+def export_pubkey_base64(public_bytes):
     """Convierte la llave pública a texto en formato base64."""
-    return b64encode(pub_bytes).decode('ascii')
+    return b64encode(public_bytes).decode('ascii')
