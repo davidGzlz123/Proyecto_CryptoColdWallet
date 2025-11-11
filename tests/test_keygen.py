@@ -1,35 +1,37 @@
+# Prueba simple del módulo keygen
+
 import binascii
 import keygen
 
 def main():
     print("Generando llaves Ed25519...")
-    priv, pub = keygen.generate_keypair()
-    print("Llave privada (hex):", binascii.hexlify(priv).decode())
-    print("Llave pública (hex):", keygen.export_pubkey_hex(pub))
-    print("Llave pública (base64):", keygen.export_pubkey_base64(pub))
+    private_bytes, public_bytes = keygen.generate_keypair()
+    print("Llave privada (hex):", binascii.hexlify(private_bytes).decode())
+    print("Llave pública (hex):", keygen.export_pubkey_hex(public_bytes))
+    print("Llave pública (base64):", keygen.export_pubkey_base64(public_bytes))
 
     # Prueba rápida: firmar y verificar un mensaje
-    mensaje = b"mensaje de prueba"
+    message = b"mensaje de prueba"
     if keygen.CRYPTOGRAPHY_OK:
         from cryptography.hazmat.primitives.asymmetric import ed25519
-        priv_obj = ed25519.Ed25519PrivateKey.from_private_bytes(priv)
-        pub_obj = ed25519.Ed25519PublicKey.from_public_bytes(pub)
+        private_obj = ed25519.Ed25519PrivateKey.from_private_bytes(private_bytes)
+        public_obj = ed25519.Ed25519PublicKey.from_public_bytes(public_bytes)
 
-        firma = priv_obj.sign(mensaje)
-        print("Firma (hex):", binascii.hexlify(firma).decode())
+        signature = private_obj.sign(message)
+        print("Firma (hex):", binascii.hexlify(signature).decode())
         try:
-            pub_obj.verify(firma, mensaje)
+            public_obj.verify(signature, message)
             print("Verificación exitosa")
         except Exception as e:
             print("Error al verificar:", e)
     else:
         from nacl.signing import SigningKey, VerifyKey
-        sk = SigningKey(priv)
-        vk = VerifyKey(pub)
-        firma = sk.sign(mensaje).signature
-        print("Firma (hex):", binascii.hexlify(firma).decode())
+        signing_key = SigningKey(private_bytes)
+        verify_key = VerifyKey(public_bytes)
+        signature = signing_key.sign(message).signature
+        print("Firma (hex):", binascii.hexlify(signature).decode())
         try:
-            vk.verify(mensaje, firma)
+            verify_key.verify(message, signature)
             print("Verificación exitosa")
         except Exception:
             print("Error al verificar")
