@@ -11,10 +11,10 @@ from cryptography.exceptions import InvalidTag
 
 # Configuración de Criptográficas ---
 AES_KEY_SIZE = 32  # 256 bits para AES-256
-GCM_NONCE_SIZE = 12 # 96 bits (Recomendado para GCM)
-GCM_TAG_SIZE = 16  # 128 bits (Tamaño de la etiqueta de autenticación)
+GCM_NONCE_SIZE = 12 # 96 bits para GCM
+GCM_TAG_SIZE = 16  # 128 bits para la etiqueta de autenticación
 
-# Definición de Helpers-B64 
+# Definición de Helpers-B64     
 
 def b64_to_bytes(s: str) -> bytes:
     """Decodificado de un string Base64 (UTF-8) a bytes."""

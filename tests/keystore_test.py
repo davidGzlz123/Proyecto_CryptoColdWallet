@@ -1,108 +1,88 @@
 import os
 import json
 import tempfile
-import pytest # La librería para hacer pruebas (necesitas `pip install pytest`)
+import pytest
 
-# Importamos las funciones de nuestro script
-# Asumimos que el script se llama 'keystore.py'
-from keystore import (
+import sys
+# Obtiene la ruta absoluta de la carpeta 'tests' (donde está este archivo)
+current_dir = os.path.dirname(os.path.abspath(__file__))
+# Sube un nivel para llegar a la raíz del proyecto ('Proyecto_CryptoColdWallet')
+project_root = os.path.dirname(current_dir)
+# Añade la raíz del proyecto al path de búsqueda de Python
+sys.path.insert(0, project_root)
+
+# Importamos las funciones de nuestro script de keystore
+from app.keystore import (
     generate_ed25519_keypair,
     make_keystore,
     save_keystore,
     load_keystore,
     unlock_keystore,
     b64u,
+    b64u_decode #
 )
 
-# --- Fixtures de Pytest ---
-# Las 'fixtures' son funciones que preparan datos para nuestras pruebas.
-# Se ejecutan antes de cada prueba que las pida como argumento.
+# Fixtures de Pytest 
 
 @pytest.fixture
 def keypair():
-# Esta fixture genera un par de llaves (privada, pública) una vez
     return generate_ed25519_keypair()
 
 @pytest.fixture
 def passphrase():
-# Esta fixture solo provee una contraseña de prueba
     return "mi-pass-123"
 
+# Tests básicos de creación, guardado, carga y desbloqueo
 
-# --- Pruebas  ---
-
-# Genera llaves
-# Crea un keystore
-# Lo guarda en un archivo temporal
-# Lo vuelve a cargar
-# Lo desbloquea con la contraseña correcta
-# Verifica que las llaves recuperadas sean idénticas a las originales
+# Test de creación y desbloqueo correcto del keystore
 def test_unlock_ok(keypair, passphrase):
-    # Obtenemos los datos de las fixtures
     priv_pem, pub_raw = keypair
-    
-    # Crear el keystore en memoria
     ks = make_keystore(priv_pem, pub_raw, passphrase)
     
-    # Usar un directorio temporal para guardar el archivo
-    # 'with' se asegura de que el directorio se borre al final
     with tempfile.TemporaryDirectory() as td:
         path = os.path.join(td, "ks.json")
-        # Guardar y cargar
         save_keystore(path, ks)
         loaded = load_keystore(path)
-        # Desbloquear
         priv2, pub2 = unlock_keystore(loaded, passphrase)
-        # Verificar (assert)
-        # Si esto es falso, el test falla
         assert priv2 == priv_pem
         assert pub2 == pub_raw
 
 
-# Crea un keystore
-# Lo carga
-# Intenta desbloquearlo con una contraseña INCORRECTA
-# Verifica que el programa lance un error 'ValueError'
+# Test de desbloqueo con passphrase incorrecto
 def test_unlock_bad_passphrase(keypair, passphrase):
     priv_pem, pub_raw = keypair
     ks = make_keystore(priv_pem, pub_raw, passphrase)
-    # El test PASA si el código dentro del 'with' lanza un ValueError
-    # El test FALLA si NO lanza un ValueError
-    with pytest.raises(ValueError):
+    
+    # El test ahora espera un ValueError que contenga este texto en específico
+    with pytest.raises(ValueError, match="ERROR: Passphrase incorrecto"):
         print("   (Intentando desbloquear con clave incorrecta, esperamos que falle...)")
         unlock_keystore(ks, "incorrecta")
     print("   (Falló como se esperaba)")
 
-# Crea un keystore
-# Modifica el ciphertext
-# Intenta desbloquearlo
-# Verifica que la función `unlock_keystore` detecte la corrupción y lance un 'ValueError'.
+
+# Test de detección de corrupción mediante el checksum
 def test_checksum_detection(keypair, passphrase):
     priv_pem, pub_raw = keypair
     ks = make_keystore(priv_pem, pub_raw, passphrase)
-    # Creamos una copia para modificarla sin afectar 'ks'
-    # La forma fácil es convertir a string JSON y de vuelta a diccionario
     ks_corrupt = json.loads(json.dumps(ks))
+    
     # Corrompemos el ciphertext
-    ks_corrupt["crypto"]["ciphertext"] = b64u(b"datos corruptos aqui")
-    # Esperamos que 'unlock_keystore' falle por culpa del checksum
-    with pytest.raises(ValueError) as e:
+    ks_corrupt["crypto"]["ciphertext"] = b64u(b"datos corruptos")
+    
+    # El test ahora espera un ValueError que contenga este texto
+    with pytest.raises(ValueError, match="ERROR: Checksum invalido"):
         unlock_keystore(ks_corrupt, passphrase)
-    # Verificamos que el error sea por el checksum
-    assert "Checksum inválido" in str(e.value)
-    print("   (Corrupción detectada por checksum, OK)")
+    print("   (Corrupción de ciphertext detectada por checksum, OK)")
 
-# Prueba que `load_keystore` falle si el JSON es inválido, 'tmp_path' es una fixture de pytest que da una ruta temporal
+
+# Test de carga de keystore con formato inválido
 def test_load_invalid_format(tmp_path):
-    # Creamos una ruta a un archivo
     bad = tmp_path / "bad.json"
-    # Escribimos un JSON que no tiene nada que ver con nuestro formato
     bad.write_text("{\"campo_incorrecto\": 123}")
-    # Esperamos que 'load_keystore' falle con ValueError
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="Formato de keystore inválido"):
         load_keystore(str(bad))
 
-# Crea 5 keystores seguidos con contraseñas diferentes y verifica que todos se puedan desbloquear
+# Test de múltiples rondas de creación y desbloqueo del keystore
 def test_multiple_rounds():
     for i in range(5):
         priv, pub = generate_ed25519_keypair()
@@ -112,16 +92,60 @@ def test_multiple_rounds():
         assert priv2 == priv
         assert pub2 == pub
 
-# Usa contraseñas aleatorias (con letras y números) paraasegurar que no haya problemas con caracteres especiales
+# Test de estabilidad con passphrases aleatorias 
 def test_stability_with_random_passphrases():
     import random
     import string
     for _ in range(3):
         priv, pub = generate_ed25519_keypair()
-        # Genera una contraseña aleatoria de 12 caracteres
         passw = ''.join(random.choices(string.ascii_letters + string.digits, k=12))
         ks = make_keystore(priv, pub, passw)
         priv2, pub2 = unlock_keystore(ks, passw)
         assert priv2 == priv
         assert pub2 == pub
+
+
+# Test de corrupción de la llave pública detectada por el checksum
+def test_unlock_corrupted_pubkey(keypair, passphrase):
+    priv_pem, pub_raw = keypair
+    ks = make_keystore(priv_pem, pub_raw, passphrase)
+
+    # Corrompemos la pubkey (que es parte del checksum)
+    ks_corrupt = json.loads(json.dumps(ks))
+    ks_corrupt["pubkey"] = b64u(b"basura publica") # 'YWJj'
+
+    # Esperamos que falle por el checksum
+    with pytest.raises(ValueError, match="ERROR: Checksum invalido"):
+        unlock_keystore(ks_corrupt, passphrase)
+    print("   (Corrupción de pubkey detectada por checksum, OK)")
+
+# Test de inconsistencia entre la llave pública y la llave privada cifrada
+def test_unlock_key_consistency_fail(keypair, passphrase):
+    priv_pem, pub_raw = keypair
+    ks = make_keystore(priv_pem, pub_raw, passphrase)
+
+    # Creamos un keystore corrupto a propósito
+    ks_corrupt = json.loads(json.dumps(ks))
+    
+    # Generamos una llave pública 'basura' que no tiene nada que ver con la privada
+    basura_pub_bytes = os.urandom(32) 
+    
+    # Recalculamos el checksum para que sea 'válido' con la llave pública basura
+    # Así nos saltamos la primera barrera del checksum 
+    
+    # Importamos la función compute_checksum
+    from app.keystore import compute_checksum 
+    
+    ciphertext_bytes = b64u_decode(ks["crypto"]["ciphertext"])
+    nuevo_checksum = compute_checksum(basura_pub_bytes, ciphertext_bytes)
+    
+    # Inyectamos la 'basura' en el keystore
+    ks_corrupt["pubkey"] = b64u(basura_pub_bytes)
+    ks_corrupt["checksum"]["value"] = nuevo_checksum
+
+    # El checksum debido a la manipulación previa pasará, pero el 'unlock' debe fallar en la 
+    # verificación de consistencia 
+    with pytest.raises(ValueError, match="Clave privada inválida después de desencriptar."):
+        unlock_keystore(ks_corrupt, passphrase)
+    print("   (Inconsistencia de llaves detectada, OK)")
 

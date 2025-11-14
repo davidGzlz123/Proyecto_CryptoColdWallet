@@ -1,23 +1,20 @@
 # El `checksum` es SHA256(pubkey_bytes || ciphertext_bytes) en hexadecimal.
-# Requisitos: instalar la librería `cryptography` (pip install cryptography).
 
 import json
 import os
 import base64
 import hashlib
 
-# Importamos las partes específicas de 'cryptography'
+# Importamos las partes específicas de 'cryptography' (para llaves Ed25519)
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import (
-    Encoding, PrivateFormat, PublicFormat, NoEncryption, BestAvailableEncryption, load_pem_private_key
+    Encoding, PrivateFormat, PublicFormat, NoEncryption, load_pem_private_key
 )
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.backends import default_backend
 
-
-# --- Funciones para Base64 ---
+# Importamos módulos argon2_wrapper y aead_gcm
+from app.argon_2_wrapper import generate_key_from_passphrase, create_random_salt, Argon2Settings
+from app.aead_gcm import encrypt as aead_encrypt, decrypt as aead_decrypt, EncryptedData
 
 # Función para codificar bytes a string base64 URL-safe (sin padding '=')
 def b64u(data_bytes):
@@ -39,7 +36,7 @@ def b64u_decode(data_str):
     return base64.urlsafe_b64decode(data_str)
 
 
-# --- Funciones de Criptografía ---
+# Funciones de Criptografía de Llaves Ed25519
 
 # Genera un par de llaves Ed25519
 def generate_ed25519_keypair():
@@ -63,60 +60,38 @@ def generate_ed25519_keypair():
     return priv_pem, pub
 
 
-# Deriva una llave de 32 bytes usando la passphrase y un salt
-def derive_key(passphrase, salt, iterations=200000, length=32):
-    # Usamos el algoritmo PBKDF2 con SHA256
-    kdf = PBKDF2HMAC(
-        algorithm=hashes.SHA256(),
-        length=length, # Longitud de la llave que queremos (32 bytes = 256 bits)
-        salt=salt,
-        iterations=iterations,
-        backend=default_backend() # Usamos el backend por defecto de cryptography
-    )
-    # Generamos la llave desde la passphrase
-    # Hay que pasar la passphrase a bytes
-    return kdf.derive(passphrase.encode('utf-8'))
-
-
 # Encripta la llave privada (en formato PEM) con la passphrase
 def encrypt_private_key(private_pem, passphrase):
     # Generamos un "salt" aleatorio (16 bytes)
     # El salt es para que la misma passphrase genere llaves diferentes
-    salt = os.urandom(16)
-    iters = 200000 # Mismo número de iteraciones que en derive_key
+    # Usamos nuestro helper de Argon2
+    salt = create_random_salt(16)
+    
+    # Usamos los settings por defecto de nuestro módulo Argon2
+    settings = Argon2Settings()
 
-    # Derivamos la llave de encriptación
-    key = derive_key(passphrase, salt, iterations=iters)
+    # Derivamos la llave de encriptación 
+    key = generate_key_from_passphrase(passphrase, salt, settings)
 
-    # Usamos el cifrador AES-GCM
-    aesgcm = AESGCM(key)
-
-    # 4. Generamos un nonce aleatorio de 12 bytes
-    nonce = os.urandom(12)
-
-    # Encriptamos la llave privada
-    ct_con_tag = aesgcm.encrypt(nonce, private_pem, None)
-
-    # La librería cryptography pega el tag de autenticación al final del ciphertext.
-    # El tag de AES-GCM es siempre de 16 bytes.
-    # Tenemos que separarlos para guardarlos como dice el formato.
-    tag = ct_con_tag[-16:]
-    ciphertext = ct_con_tag[:-16]
+    # Usamos el cifrador AES-GCM para encriptar la llave privada
+    # 'aead_encrypt' ya maneja el nonce y la separación del tag
+    encrypted_payload = aead_encrypt(key, private_pem)
 
     # Creamos el diccionario "crypto" para el JSON
     crypto = {
         'kdf': {
-            'name': 'pbkdf2',
+            'name': 'argon2id', # Usamos el nombre correcto
             'salt': b64u(salt), # Guardamos el salt en base64
-            'iters': iters,
-            'hash': 'sha256'
+            'time_cost': settings.time_cost,
+            'memory_cost': settings.memory_cost,
+            'parallelism': settings.parallelism
         },
         'cipher': 'aes-256-gcm',
         'cipherparams': {
-            'nonce': b64u(nonce) # Guardamos el nonce en base64
+            'nonce': b64u(encrypted_payload.nonce) # Guardamos el nonce en base64
         },
-        'ciphertext': b64u(ciphertext), # Guardamos en base64
-        'tag': b64u(tag) # Guardamos en base64
+        'ciphertext': b64u(encrypted_payload.ciphertext), # Guardamos en base64
+        'tag': b64u(encrypted_payload.tag) # Guardamos en base64
     }
     return crypto
 
@@ -124,36 +99,39 @@ def encrypt_private_key(private_pem, passphrase):
 # Desencripta la llave privada usando el diccionario 'crypto' y la passphrase
 def decrypt_private_key(crypto, passphrase):
     # Revisamos que el KDF (algoritmo de derivación de llave) sea el que soportamos
-    if crypto.get('kdf', {}).get('name') != 'pbkdf2':
-        raise ValueError('KDF no soportado')
+    if crypto.get('kdf', {}).get('name') != 'argon2id':
+        raise ValueError('KDF no soportado (solo argon2id)')
 
     # Sacamos los datos del diccionario y decodificamos de base64
     salt = b64u_decode(crypto['kdf']['salt'])
-    iters = int(crypto['kdf']['iters'])
+    # Leemos los parámetros de Argon2
+    settings = Argon2Settings(
+        time_cost=int(crypto['kdf']['time_cost']),
+        memory_cost=int(crypto['kdf']['memory_cost']),
+        parallelism=int(crypto['kdf']['parallelism'])
+    )
     nonce = b64u_decode(crypto['cipherparams']['nonce'])
     ciphertext = b64u_decode(crypto['ciphertext'])
     tag = b64u_decode(crypto['tag'])
 
-    # Derivamos la llave (tiene que dar la misma que al encriptar)
-    key = derive_key(passphrase, salt, iterations=iters)
+    # Derivamos la llave de encriptación usando la passphrase y el salt
+    key = generate_key_from_passphrase(passphrase, salt, settings)
 
-    # Preparamos el cifrador AES-GCM
-    aesgcm = AESGCM(key)
-
-    # Volvemos a juntar el ciphertext y el tag, como los da la librería
-    ct_con_tag = ciphertext + tag
+    # Preparamos la estructura de datos para nuestro módulo AEAD 
+    encrypted_data = EncryptedData(ciphertext=ciphertext, nonce=nonce, tag=tag)
 
     try:
-        # Intentamos desencriptar
-        # Si la passphrase es incorrecta, esto deberíafallar
-        priv_pem = aesgcm.decrypt(nonce, ct_con_tag, None)
+        # Intentamos desencriptar 
+        # 'aead_decrypt' ya maneja la 'InvalidTag' y lanza ValueError
+        # Si la passphrase es incorrecta, esto debería fallar
+        priv_pem = aead_decrypt(key, encrypted_data)
         return priv_pem
-    except Exception as e:
-        # Si falla, lo más seguro es que la passphrase esté mal
-        raise ValueError('Desencriptado fallido. Passphrase incorrecta o datos corruptos.')
+    except ValueError:
+        # Si falla, es seguro que el passphrase esté mal o el keystore esté corrupto
+        raise ValueError('ERROR: Passphrase incorrecto o el keystore esta corrupto.')
 
 
-# --- Funciones del Keystore ---
+# Funciones del Keystore JSON
 
 # Calcula el checksum (sha256) de la llave pública y el ciphertext
 def compute_checksum(pubkey_bytes, ciphertext_bytes):
@@ -169,7 +147,7 @@ def compute_checksum(pubkey_bytes, ciphertext_bytes):
 
 # Crea el diccionario completo del keystore
 def make_keystore(private_pem, pubkey_raw, passphrase):
-    # Encriptamos la llave privada
+    # Encriptamos la llave privada (Ahora usa Argon2 y nuestro AEAD)
     crypto = encrypt_private_key(private_pem, passphrase)
 
     # Calculamos el checksum
@@ -226,7 +204,8 @@ def unlock_keystore(keystore, passphrase):
 
     # Comparamos el checksum guardado con el que acabamos de calcular
     if expected_checksum != actual_checksum:
-        raise ValueError('Checksum inválido: el archivo está corrupto')
+        # (Este es el mensaje de error mejorado de P1)
+        raise ValueError('ERROR: Checksum invalido. El archivo parece estar corrupto.')
 
     # Desencriptar
     # Si el checksum está bien, intentamos desencriptar.
@@ -245,7 +224,8 @@ def unlock_keystore(keystore, passphrase):
         # Comparamos byte por byte
         if pub_from_priv != pubkey_raw:
             # Esto no debería pasar si el checksum y la passphrase están bien
-            raise ValueError('Error de consistencia: la llave privada no corresponde con la pública')
+            # (Este es el mensaje de error mejorado de P1)
+            raise ValueError('ERROR FATAL: Inconsistencia de llaves. Keystore invalido.')
     except Exception as e:
         # Si falla al cargar la llave PEM, algo salió muy mal
         raise ValueError('Clave privada inválida después de desencriptar.')
