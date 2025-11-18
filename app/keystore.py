@@ -232,3 +232,93 @@ def unlock_keystore(keystore, passphrase):
 
     # Si todo salió bien, devolvemos la llave privada (PEM) y la pública (raw)
     return priv_pem, pubkey_raw
+
+
+# Cambia la passphrase del keystore (re-encripta la clave privada)
+def change_keystore_passphrase(path, old_passphrase, new_passphrase):
+    """
+    Cambia la passphrase de un keystore existente.
+
+    Pasos:
+    1. Carga el keystore desde 'path'.
+    2. Deriva la llave antigua con old_passphrase y desencripta la private key.
+    3. Valida la nueva passphrase (no vacía, longitud mínima).
+    4. Genera un nuevo salt, deriva una nueva llave con Argon2 y re-encripta.
+    5. Actualiza campos 'kdf.salt', 'cipherparams.nonce', 'ciphertext', 'tag' y 'checksum'.
+    6. Guarda el keystore de vuelta en 'path'.
+    """
+    if not new_passphrase:
+        raise ValueError("La nueva passphrase no puede estar vacía.")
+
+    if len(new_passphrase) < 8:
+        raise ValueError("La nueva passphrase debe tener al menos 8 caracteres.")
+
+    # 1. Cargar keystore
+    keystore = load_keystore(path)
+
+    crypto = keystore['crypto']
+    kdf_info = crypto['kdf']
+    cipherparams = crypto['cipherparams']
+
+    # 2. Reconstruir parámetros de Argon2 para la llave antigua
+    if kdf_info.get('name') != 'argon2id':
+        raise ValueError("KDF no soportado para cambio de passphrase (se espera argon2id).")
+
+    salt_old = b64u_decode(kdf_info['salt'])
+    settings_old = Argon2Settings(
+        time_cost=int(kdf_info['time_cost']),
+        memory_cost=int(kdf_info['memory_cost']),
+        parallelism=int(kdf_info['parallelism'])
+    )
+
+    key_old = generate_key_from_passphrase(old_passphrase, salt_old, settings_old)
+
+    # 3. Decodificar datos cifrados actuales
+    nonce_old = b64u_decode(cipherparams['nonce'])
+    ciphertext_old = b64u_decode(crypto['ciphertext'])
+    tag_old = b64u_decode(crypto['tag'])
+
+    encrypted_data_old = EncryptedData(
+        ciphertext=ciphertext_old,
+        nonce=nonce_old,
+        tag=tag_old
+    )
+
+    # 4. Desencriptar la llave privada con la passphrase antigua
+    try:
+        priv_pem = aead_decrypt(key_old, encrypted_data_old)
+    except ValueError:
+        # Passphrase vieja incorrecta o datos corruptos
+        raise ValueError("Passphrase antigua incorrecta o keystore corrupto.")
+
+    # 5. Generar un nuevo salt y nueva llave para la passphrase nueva
+    new_salt = create_random_salt(16)
+    settings_new = Argon2Settings(
+        time_cost=settings_old.time_cost,
+        memory_cost=settings_old.memory_cost,
+        parallelism=settings_old.parallelism
+    )
+    key_new = generate_key_from_passphrase(new_passphrase, new_salt, settings_new)
+
+    # 6. Re-encriptar la llave privada con la nueva llave
+    encrypted_new = aead_encrypt(key_new, priv_pem)
+
+    # 7. Actualizar campos del keystore (kdf, cipherparams, ciphertext, tag)
+    kdf_info['salt'] = b64u(new_salt)
+    kdf_info['time_cost'] = settings_new.time_cost
+    kdf_info['memory_cost'] = settings_new.memory_cost
+    kdf_info['parallelism'] = settings_new.parallelism
+
+    cipherparams['nonce'] = b64u(encrypted_new.nonce)
+    crypto['ciphertext'] = b64u(encrypted_new.ciphertext)
+    crypto['tag'] = b64u(encrypted_new.tag)
+
+    # 8. Recalcular el checksum con el nuevo ciphertext
+    pubkey_raw = b64u_decode(keystore['pubkey'])
+    ciphertext_bytes_new = b64u_decode(crypto['ciphertext'])
+    keystore['checksum']['value'] = compute_checksum(pubkey_raw, ciphertext_bytes_new)
+
+    # 9. Guardar keystore modificado
+    save_keystore(path, keystore)
+
+    return keystore
