@@ -1,4 +1,15 @@
-from canonicalizer import canonicalize
+import os
+import sys
+import pytest
+
+# Obtener ruta del directorio actual (tests/)
+current_dir = os.path.dirname(os.path.abspath(__file__))
+# Subir a la raíz del proyecto
+project_root = os.path.dirname(current_dir)
+# Añadir raíz al path para permitir importar app.*
+sys.path.insert(0, project_root)
+
+from app.canonicalizer import canonicalize
 
 
 def test_simple_object():
@@ -16,7 +27,7 @@ def test_nested_object_and_array():
 
 
 def test_strings_unicode_normalization():
-    # Verifica que 'e' + acento sea igual a 'é' colocado desde el principio.
+    # Verifica que 'e' + acento sea igual a 'é' precompuesta.
     a = {'s': 'e\u0301'}
     b = {'s': '\u00e9'}
     out_a = canonicalize(a).decode('utf-8')
@@ -39,12 +50,13 @@ def test_negative_zero_normalized():
 
 
 def test_boolean_and_null():
-    # true/false/null deben ir en minúsculas y ordenadas.
+    # true/false/null deben ir en minúsculas y en orden.
     obj = {"t": True, "f": False, "n": None}
     out = canonicalize(obj).decode('utf-8')
     assert out == '{"f":false,"n":null,"t":true}'
 
 
+# Modo demo si se ejecuta manualmente
 if __name__ == '__main__':
     examples = [
         ('Original JSON string', '{"b":2, "a":1}'),

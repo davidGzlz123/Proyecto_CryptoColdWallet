@@ -4,21 +4,25 @@
 import os
 import pytest
 import sys
+
 # Obtiene la ruta absoluta de la carpeta 'tests' (donde está este archivo)
 current_dir = os.path.dirname(os.path.abspath(__file__))
 # Sube un nivel para llegar a la raíz del proyecto ('Proyecto_CryptoColdWallet')
 project_root = os.path.dirname(current_dir)
 # Añade la raíz del proyecto al path de búsqueda de Python
 sys.path.insert(0, project_root)
+
 from app.address import address_from_pubkey
 
+
 # Test 1: Prueba de determinismo, enfocada en asegurar que con una
-# misma llave pública, siemre se debe de conseguir la misma dirección.
+# misma llave pública, siempre se debe de conseguir la misma dirección.
 def test_determinismo():
-    pubkey = os.urandom(32) # Una pubkey X
+    pubkey = os.urandom(32)  # Una pubkey X
     addr1 = address_from_pubkey(pubkey)
     addr2 = address_from_pubkey(pubkey)
-    assert addr1 == addr2 # Deben ser idénticas
+    assert addr1 == addr2  # Deben ser idénticas
+
 
 # Test 2: Prueba de formato de la dirección
 # Revisamos que la dirección tenga el formato "0x..." y 40 caracteres hexadecimales
@@ -30,18 +34,19 @@ def test_formato_hex():
     assert addr.startswith("0x")
     
     # Se confirma que la dirección tenga 42 caracteres en total
-    # 0x de inicio y 20 bytes * 2 caracteres hexa por byte, siendo así los otros 42
+    # 0x de inicio y 20 bytes * 2 caracteres hexa por byte
     assert len(addr) == 42
     
-    # Revisamos que sea un hexadecimal válido (después del '0x')
+    # Revisamos que sea un hexadecimal válido (incluyendo el '0x')
     try:
         int(addr, 16)
     except ValueError:
         pytest.fail("La dirección no es un hexadecimal válido.")
 
+
 # Test 3 (Golden Vector):
-# Probamos con una dirección conocida que la llave pública derivada
-# sea igual a dicha dirección 
+# Probamos con una pubkey conocida que la dirección derivada
+# sea igual a una dirección esperada
 def test_golden_vector():
     # Usamos una llave pública de 32 bytes de puros ceros
     pubkey_bytes = b'\x00' * 32
@@ -58,3 +63,24 @@ def test_golden_vector():
     # Si hay fallo, nuestra lógica de 'slice' está mal
     print(addr)
     assert addr == expected_address
+
+
+# Test 4: pubkey demasiado corta
+def test_pubkey_invalida_corta():
+    pubkey = b'\x01' * 10  # solo 10 bytes
+    with pytest.raises(ValueError):
+        address_from_pubkey(pubkey)
+
+
+# Test 5: pubkey demasiado larga
+def test_pubkey_invalida_larga():
+    pubkey = b'\x01' * 64  # 64 bytes
+    with pytest.raises(ValueError):
+        address_from_pubkey(pubkey)
+
+
+# Test 6: pubkey de tipo incorrecto
+def test_pubkey_tipo_incorrecto():
+    pubkey = "no soy bytes"
+    with pytest.raises(ValueError):
+        address_from_pubkey(pubkey)
