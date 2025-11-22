@@ -4,7 +4,7 @@ from cryptography.exceptions import InvalidSignature
 from app.canonicalizer import canonicalize
 from app.keystore import b64u_decode
 import hashlib
-
+from app.address import address_from_pubkey
 
 class Verifier:
 
@@ -69,7 +69,7 @@ class Verifier:
 
 
         # 6. Derivar address y comparar con tx["from"]
-        derived_address = Verifier.derive_address_from_pubkey(pubkey_bytes)
+        derived_address = address_from_pubkey(pubkey_bytes)
 
         if tx["from"] != derived_address:
             return False, (
