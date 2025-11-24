@@ -1,0 +1,6 @@
+{
+  "from": "0xAAA",
+  "to": "0xBBB",
+  "value": 100,
+  "nonce": 1
+}
