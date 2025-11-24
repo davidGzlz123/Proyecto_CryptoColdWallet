@@ -17,6 +17,7 @@ from app.address import address_from_pubkey
 from app.signer import Signer
 from app.verifier import Verifier
 from app.keystore import b64u_decode # Necesario para decodificar la pubkey
+from app.nonce_manager import get_nonce, increment_nonce, validate_nonce
 
 # --- Configuración de Directorios ---
 OUTBOX_DIR = "outbox"
@@ -111,13 +112,17 @@ def interactive_sign():
     my_pub = b64u_decode(ks["pubkey"])
     my_address = address_from_pubkey(my_pub)
 
+    # Obtenemos el nonce correcto desde nuestra DB
+    current_nonce = get_nonce(my_address)
+
     tx = {
         "from": my_address,
         "to": to_addr,
         "value": amount,
-        "nonce": int(time.time())
+        "nonce": current_nonce
     }
-    
+    print(f"Usando Nonce: {current_nonce}")
+
     print(f"\nFirmando transacción: {json.dumps(tx, indent=2)}")
 
     # Firma de la transacción
@@ -167,21 +172,40 @@ def interactive_process():
             with open(src, 'r') as f:
                 signed_tx = json.load(f)
             
-            is_valid, msg = Verifier.verify(signed_tx)
+            is_valid, msg = Verifier.verify(signed_tx) # Verificamos la firma
             
+            # Bloque de lógica Anti-Replay usando nonces 
             if is_valid:
-                dst = os.path.join(VERIFIED_DIR, filename)
-                shutil.move(src, dst)
-                print(f"[OK] -> Verified")
+                # Implementamos la lógica Anti-Replay usando nonces
+                sender_addr = signed_tx["tx"]["from"]
+                tx_nonce = signed_tx["tx"]["nonce"]
+                
+                try:
+                    # Validamos que el nonce sea el que sigue (anti-replay)
+                    validate_nonce(sender_addr, tx_nonce)
+                    increment_nonce(sender_addr) # Incrementamos el nonce solo si es válido
+                    
+                    # Movemos a verified/
+                    dst = os.path.join(VERIFIED_DIR, filename)
+                    shutil.move(src, dst)
+                    print(f"✅ [OK | Nonce {tx_nonce}] -> Verificado")
+                    
+                except ValueError as e:
+                    # Si el nonce está mal (aunque la firma esté bien), se rechaza
+                    dst = os.path.join(REJECTED_DIR, filename)
+                    shutil.move(src, dst)
+                    print(f"⛔ [NONCE ERROR: {e}] -> Rechazado")
+                # ---------------------------------
             else:
                 dst = os.path.join(REJECTED_DIR, filename)
                 shutil.move(src, dst)
-                print(f"[INVALIDO: {msg}] -> Rejected")
+                print(f"❌ [INVALIDO: {msg}] -> Rechazado")
+            
                 
         except Exception as e:
             dst = os.path.join(REJECTED_DIR, filename)
             shutil.move(src, dst)
-            print(f"[ERROR: {e}] -> Rejected")
+            print(f"❌ [ERROR: {e}] -> Rejected")
 
 
 # --- Menú Principal CLI ---
