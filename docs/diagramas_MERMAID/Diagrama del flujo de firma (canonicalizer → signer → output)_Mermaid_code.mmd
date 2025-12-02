@@ -1,0 +1,87 @@
+flowchart TD
+    %% === 1. ENTRADA ===
+    subgraph INPUT ["1. ENTRADA DE DATOS"]
+        direction TB
+        Tx("Datos de la Transacción<br/>(Origen, Destino, Monto...)")
+        PrivKey("Llave Privada<br/>(Autorización del Usuario)")
+    end
+
+    %% === 2. PREPARACIÓN ===
+    subgraph PREP ["2. PREPARACIÓN (Estandarización)"]
+        direction TB
+        Canon("Proceso de Canonicalización<br/>(Ordenar y limpiar formato)")
+        BytesTx("Secuencia de Bytes Única<br/>(Representación inmutable)")
+        
+        Canon -->|Genera| BytesTx
+    end
+
+    %% === 3. CRIPTOGRAFÍA ===
+    subgraph CRYPTO [".                      3. OPERACIÓN                      CRIPTOGRÁFICA"]
+        direction TB
+        SignFunc("Generar Firma Digital<br/>(Algoritmo Ed25519)")
+        
+        SigRaw("Firma Matemática Cruda<br/>(64 Bytes Binarios)")
+        PubRaw("Llave Pública Cruda<br/>(Identidad de 32 Bytes)")
+        
+        SignFunc -->|Produce| SigRaw
+    end
+
+    %% === 4. CODIFICACIÓN ===
+    subgraph ENCODING ["4. CODIFICACIÓN (Formato de Texto)"]
+        direction TB
+        B64Sig("Texto Base64URL<br/>(Seguro para web/JSON)")
+        B64Pub("Texto Base64URL<br/>(Seguro para web/JSON)")
+    end
+
+    %% === 5. SALIDA ===
+    subgraph OUTPUT ["5. SALIDA FINAL"]
+        direction TB
+        FinalJSON("Paquete de Transacción Firmada<br/>(Contiene: Datos, Firma y Llave)")
+    end
+
+    %% === CONEXIONES ===
+    %% Estilo de línea suave
+    linkStyle default stroke:#333,stroke-width:2px,fill:none,curve:basis;
+
+    Tx --> Canon
+    BytesTx --> SignFunc
+    
+    PrivKey --> SignFunc
+    PrivKey -->|Deriva| PubRaw
+    
+    SigRaw --> B64Sig
+    PubRaw --> B64Pub
+    
+    B64Sig --> FinalJSON
+    B64Pub --> FinalJSON
+
+    %% === ESTILOS VISUALES ===
+    
+    %% Nodos (Blancos)
+    style Tx fill:#fff,stroke:#333,stroke-width:2px,color:#000
+    style PrivKey fill:#fff,stroke:#333,stroke-width:2px,color:#000
+    style Canon fill:#fff,stroke:#333,stroke-width:2px,color:#000
+    style BytesTx fill:#fff,stroke:#333,stroke-width:2px,color:#000
+    style SignFunc fill:#fff,stroke:#333,stroke-width:2px,color:#000
+    style SigRaw fill:#fff,stroke:#333,stroke-width:2px,color:#000
+    style PubRaw fill:#fff,stroke:#333,stroke-width:2px,color:#000
+    style B64Sig fill:#fff,stroke:#333,stroke-width:2px,color:#000
+    style B64Pub fill:#fff,stroke:#333,stroke-width:2px,color:#000
+    style FinalJSON fill:#fff,stroke:#333,stroke-width:2px,stroke-dasharray: 5 5,color:#000
+
+    %% Estilos Específicos por Grupo (Colores Opacos Distintos)
+    
+    %% INPUT: Azul Grisáceo
+    style INPUT fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#0d47a1,font-weight:bold,padding:40px
+    
+    %% PREP: Naranja Suave
+    style PREP fill:#fff3e0,stroke:#e65100,stroke-width:2px,color:#e65100,font-weight:bold,padding:40px
+    
+    %% CRYPTO: Verde Suave
+    style CRYPTO fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20,font-weight:bold,padding:40px
+    
+    %% ENCODING: Lavanda Suave
+    style ENCODING fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#4a148c,font-weight:bold,padding:40px
+    
+    %% OUTPUT: Gris Neutro
+    style OUTPUT fill:#eceff1,stroke:#455a64,stroke-width:2px,color:#263238,font-weight:bold,padding:40px
