@@ -1,0 +1,11 @@
+{
+  "tx": {
+    "from": "0xAAA",
+    "to": "0xBBB",
+    "value": 100,
+    "nonce": 1
+  },
+  "signature": "B3UDt-KAkz4WOU6flaNiMNIKeb4r-WRZMoBe_Np5BGH0eVzvlnodovc8g6HQyC_CYGcsz9Gr0BdU5ufF4bYPCA",
+  "pubkey": "bY8-XQotXXKaBpYRxP5C2B9jRuBD0Xog7BSqH_z_w5A",
+  "scheme": "ed25519"
+}

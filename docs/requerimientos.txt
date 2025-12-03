@@ -1,8 +1,10 @@
-# Archivo de requerimientos del proyecto
-
-# Para la generación de llaves
+# Archivo de requerimientos del proyecto Cold Wallet
+ 
+# Criptografía general y Ed25519
 cryptography
-pynacl
+
+# Derivación de claves (KDF)
+argon2-cffi
 
 # Para correr las pruebas
 pytest
