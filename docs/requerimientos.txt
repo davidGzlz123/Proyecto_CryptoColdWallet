@@ -1,0 +1,10 @@
+# Archivo de requerimientos del proyecto Cold Wallet
+ 
+# Criptografía general y Ed25519
+cryptography
+
+# Derivación de claves (KDF)
+argon2-cffi
+
+# Para correr las pruebas
+pytest

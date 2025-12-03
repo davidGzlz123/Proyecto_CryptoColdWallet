@@ -1,0 +1,90 @@
+flowchart TD
+    %% === 1. RECEPCIÓN ===
+    subgraph INPUT ["1. RECEPCIÓN DE DATOS"]
+        direction TB
+        JSONFile("Archivo JSON Firmado<br/>(Desde Inbox)")
+        
+        CheckFields{"¿Contiene campos?<br/>(tx, signature, pubkey)"}
+        
+        JSONFile --> CheckFields
+    end
+
+    %% === 2. DECODIFICACIÓN ===
+    subgraph DECODE ["2. DECODIFICACIÓN"]
+        direction TB
+        RawSig("Firma Decodificada<br/>(Bytes Crudos)")
+        RawPub("Llave Pública Decodificada<br/>(Bytes Crudos)")
+        CanonTx("Transacción Canonicalizada<br/>(Bytes Originales)")
+        
+        CheckFields -->|Sí| RawSig
+        CheckFields -->|Sí| RawPub
+        CheckFields -->|Sí| CanonTx
+    end
+
+    %% === 3. VALIDACIÓN ===
+    subgraph VALIDATION ["3. VALIDACIÓN DE SEGURIDAD"]
+        direction TB
+        CryptoCheck{"¿Firma Matemática Válida?<br/>(Ed25519 Verify)"}
+        
+        DeriveAddr("Derivar Dirección<br/>(Calcular Address desde PubKey)")
+        
+        IdentityCheck{"¿Identidad Coincide?<br/>(Address == From)"}
+        
+        CryptoCheck -->|Sí| DeriveAddr
+        DeriveAddr --> IdentityCheck
+    end
+
+    %% === 4. RESULTADO ===
+    subgraph RESULT ["4. ESTADO FINAL"]
+        direction TB
+        Rejected("RECHAZAR<br/>(Mover a Rejected)")
+        Accepted("ACEPTAR<br/>(Mover a Verified)")
+    end
+
+    %% === CONEXIONES LÓGICAS ===
+    linkStyle default stroke:#333,stroke-width:2px,fill:none,curve:basis;
+
+    %% Flujos de datos
+    RawSig --> CryptoCheck
+    RawPub --> CryptoCheck
+    CanonTx --> CryptoCheck
+    
+    %% Flujos de decisión (Rechazo)
+    CheckFields -->|No| Rejected
+    CryptoCheck -->|No| Rejected
+    IdentityCheck -->|No| Rejected
+    
+    %% Flujo de éxito
+    IdentityCheck -->|Sí| Accepted
+
+    %% === ESTILOS VISUALES ===
+    
+    %% Nodos de Proceso (Blancos)
+    style JSONFile fill:#fff,stroke:#333,stroke-width:2px,color:#000
+    style RawSig fill:#fff,stroke:#333,stroke-width:2px,color:#000
+    style RawPub fill:#fff,stroke:#333,stroke-width:2px,color:#000
+    style CanonTx fill:#fff,stroke:#333,stroke-width:2px,color:#000
+    style DeriveAddr fill:#fff,stroke:#333,stroke-width:2px,color:#000
+    
+    %% Nodos de Decisión (Diamantes - Amarillos Claros)
+    style CheckFields fill:#fff9c4,stroke:#fbc02d,stroke-width:2px,color:#000
+    style CryptoCheck fill:#fff9c4,stroke:#fbc02d,stroke-width:2px,color:#000
+    style IdentityCheck fill:#fff9c4,stroke:#fbc02d,stroke-width:2px,color:#000
+    
+    %% Nodos Finales (Rojo y Verde)
+    style Rejected fill:#ffebee,stroke:#c62828,stroke-width:2px,color:#b71c1c
+    style Accepted fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20
+
+    %% Estilos de Grupos (Misma paleta que Diagrama 1)
+    
+    %% INPUT: Azul Grisáceo
+    style INPUT fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#0d47a1,font-weight:bold,padding:40px
+    
+    %% DECODE: Naranja Suave
+    style DECODE fill:#fff3e0,stroke:#e65100,stroke-width:2px,color:#e65100,font-weight:bold,padding:40px
+    
+    %% VALIDATION: Verde Suave
+    style VALIDATION fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20,font-weight:bold,padding:40px
+    
+    %% RESULT: Gris Neutro
+    style RESULT fill:#eceff1,stroke:#455a64,stroke-width:2px,color:#263238,font-weight:bold,padding:40px
